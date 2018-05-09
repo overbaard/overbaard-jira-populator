@@ -17,10 +17,8 @@ public class JiraPopulatorMain {
         final String password = System.getProperty(JIRA_PASSWORD_PROP_NAME, JIRA_PASSWORD_DEFAULT);
 
         try (RestClientFactory factory = new RestClientFactory(jiraUrl, username, password)) {
-            UserPopulator userPopulator = new UserPopulator(factory);
-            userPopulator.createUsers();
-            ProjectPopulator projectPopulator = new ProjectPopulator(factory);
-            projectPopulator.createProjects();
+            UserPopulator.createUsers(factory);
+            ProjectPopulator.createProjects(factory);
         }
     }
 

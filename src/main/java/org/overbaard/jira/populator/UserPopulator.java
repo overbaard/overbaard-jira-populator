@@ -20,7 +20,13 @@ class UserPopulator {
         this.factory = factory;
     }
 
-    List<String> createUsers() {
+    static UserPopulator createUsers(RestClientFactory factory) {
+        UserPopulator populator = new UserPopulator(factory);
+        populator.create();
+        return populator;
+    }
+
+    private void create() {
         List<Integer> avatars = loadAvatars();
 
         List<UserInfo> userInfos = new ArrayList<>();
@@ -47,7 +53,6 @@ class UserPopulator {
             }
             users.add(userInfo.username);
         }
-        return users;
     }
 
     private List<Integer> loadAvatars() {

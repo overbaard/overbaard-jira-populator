@@ -14,12 +14,18 @@ import org.jboss.dmr.ModelNode;
 public class ProjectPopulator {
     private final RestClientFactory factory;
 
-    ProjectPopulator(RestClientFactory factory) {
+    private ProjectPopulator(RestClientFactory factory) {
         this.factory = factory;
     }
 
 
-    public void createProjects() {
+    public static ProjectPopulator createProjects(RestClientFactory factory) {
+        ProjectPopulator populator = new ProjectPopulator(factory);
+        populator.create();
+        return populator;
+    }
+
+    private void create() {
         List<ProjectInfo> projects = new ArrayList<>();
         projects.add(new ProjectInfo("FEAT", "Feature"));
         projects.add(new ProjectInfo("SUP", "Support"));
