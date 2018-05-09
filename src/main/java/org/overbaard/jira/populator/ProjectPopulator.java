@@ -27,9 +27,9 @@ public class ProjectPopulator {
 
     private void create() {
         List<ProjectInfo> projects = new ArrayList<>();
-        projects.add(new ProjectInfo("FEAT", "Feature"));
-        projects.add(new ProjectInfo("SUP", "Support"));
-        projects.add(new ProjectInfo("UP", "Upstream"));
+        projects.add(new ProjectInfo("FEAT", "Feature", new String[]{"1.0.0", "2.0.0", "2.0.2"}));
+        projects.add(new ProjectInfo("SUP", "Support", new String[]{"1.0.0", "1.0.1", "1.0.2"}));
+        projects.add(new ProjectInfo("UP", "Upstream", new String[]{"1.0.0", "2.0.0", "3.0.0"}));
 
         for (ProjectInfo projectInfo : projects) {
             if (!projectExists(projectInfo)) {
@@ -47,6 +47,9 @@ public class ProjectPopulator {
                     }
                     for (String component : components) {
                         createComponents(projectInfo, component);
+                    }
+                    for (String fixVersion : projectInfo.versions) {
+                        createFixVersion(projectInfo, fixVersion);
                     }
                 }
             }
@@ -96,13 +99,41 @@ public class ProjectPopulator {
         factory.post(builder, component);
     }
 
+    private void createFixVersion(ProjectInfo projectInfo, String fixVersion) {
+        ModelNode version = new ModelNode();
+        version.get("project").set(projectInfo.key);
+        version.get("name").set(fixVersion);
+        version.get("description").set("Version " + fixVersion);
+
+        UriBuilder builder = factory.getJiraRestUriBuilder();
+        builder.path("version");
+        factory.post(builder, version);
+    }
+
+
+    private void createIssues(ProjectInfo projectInfo) {
+
+        // Run http://localhost:2990/jira/rest/api/2/issue/createmeta?projectKeys=FEAT&expand=projects.issuetypes.fields to find all the fields needed
+
+        // TODO
+        // Issue Type
+        // Assignee
+        // Component
+        // Labels
+        // Custom Fields (Tester + Writer)
+        // Parallel Tasks
+
+    }
+
     static class ProjectInfo {
         private final String key;
         private final String name;
+        private final String[] versions;
 
-        public ProjectInfo(String key, String name) {
+        public ProjectInfo(String key, String name, String[] versions) {
             this.key = key;
             this.name = name;
+            this.versions = versions;
         }
     }
 }
