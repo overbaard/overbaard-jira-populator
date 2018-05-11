@@ -20,8 +20,8 @@ public class JiraPopulatorMain {
         final boolean deleteExistingProjects = Boolean.getBoolean(DELETE_EXISTING_PROJECTS_PROP_NAME);
 
         try (RestClientFactory factory = new RestClientFactory(jiraUrl, username, password)) {
-            UserPopulator.createUsers(factory);
-            ProjectPopulator.createProjects(factory, deleteExistingProjects);
+            UserPopulator userPopulator = UserPopulator.createUsers(factory);
+            ProjectPopulator.createProjects(factory, userPopulator.getUsers(), deleteExistingProjects);
         }
     }
 

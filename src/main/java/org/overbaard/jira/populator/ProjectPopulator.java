@@ -13,67 +13,76 @@ import org.jboss.dmr.ModelNode;
  */
 public class ProjectPopulator {
     private final RestClientFactory factory;
+    private final String[] assignees;
     private final boolean deleteExistingProjects;
 
-    private ProjectPopulator(RestClientFactory factory, boolean deleteExistingProjects) {
+    private static final String[] FEAT_LABELS = {"ExtraTesting", "NeedsInfo", "Support", "Approved", "Retrospective"};
+    private static final String[] SUP_LABELS = {"ExtraTesting", "Customer", "NeedsInfo", "Documentation"};
+
+    private ProjectPopulator(RestClientFactory factory, String[] assignees, boolean deleteExistingProjects) {
         this.factory = factory;
+        this.assignees = assignees;
         this.deleteExistingProjects = deleteExistingProjects;
     }
 
 
-    public static ProjectPopulator createProjects(RestClientFactory factory, boolean deleteExistingProjects) {
-        ProjectPopulator populator = new ProjectPopulator(factory, deleteExistingProjects);
+    public static ProjectPopulator createProjects(RestClientFactory factory, String[] assignees, boolean deleteExistingProjects) {
+        ProjectPopulator populator = new ProjectPopulator(factory, assignees, deleteExistingProjects);
         populator.create();
         return populator;
     }
 
     private void create() {
+        System.out.println("Creating projects....");
         List<ProjectInfo> projects = new ArrayList<>();
         projects.add(new ProjectInfo("FEAT", "Feature", new String[]{"1.0.0", "2.0.0", "2.0.2"}));
         projects.add(new ProjectInfo("SUP", "Support", new String[]{"1.0.0", "1.0.1", "1.0.2"}));
         projects.add(new ProjectInfo("UP", "Upstream", new String[]{"1.0.0", "2.0.0", "3.0.0"}));
 
         for (ProjectInfo projectInfo : projects) {
+            System.out.println("====== " + projectInfo.key);
             if (projectExists(projectInfo)) {
                 if (!deleteExistingProjects) {
                     continue;
                 }
                 deleteProject(projectInfo);
             }
-            if (!projectExists(projectInfo)) {
-                createProject(projectInfo);
-                if (projectInfo.key.equals("FEAT") || projectInfo.key.equals("SUP")) {
-                    List<String> components = new ArrayList<>();
-                    components.add("Another Component");
-                    components.add("User Experience");
-                    components.add("Jira");
-                    components.add("Core");
-                    components.add("Testsuite");
-                    components.add("Backend");
-                    if (projectInfo.key.equals("FEAT")) {
-                        components.add("FEAT Component");
-                    }
-                    for (String component : components) {
-                        createComponents(projectInfo, component);
-                    }
-                    for (String fixVersion : projectInfo.versions) {
-                        createFixVersion(projectInfo, fixVersion);
-                    }
+            createProject(projectInfo);
+            if (projectInfo.key.equals("FEAT") || projectInfo.key.equals("SUP")) {
+                List<String> components = new ArrayList<>();
+                components.add("Another Component");
+                components.add("User Experience");
+                components.add("Jira");
+                components.add("Core");
+                components.add("Testsuite");
+                components.add("Backend");
+                if (projectInfo.key.equals("FEAT")) {
+                    components.add("FEAT Component");
                 }
-                createIssues(projectInfo);
+                projectInfo.components = components.toArray(new String[components.size()]);
+                for (String component : components) {
+                    createComponent(projectInfo, component);
+                }
+                for (String fixVersion : projectInfo.versions) {
+                    createFixVersion(projectInfo, fixVersion);
+                }
+                projectInfo.labels = projectInfo.key.equals("FEAT") ? FEAT_LABELS : SUP_LABELS;
             }
+            IssuePopulator.createIssues(factory, 30, projectInfo, assignees);
         }
+        System.out.println("Creating projects - done");
     }
 
     private boolean projectExists(ProjectInfo projectInfo) {
+        System.out.println("Checking if " + projectInfo.key + " exists...");
         UriBuilder builder = factory.getJiraRestUriBuilder();
         builder.path("project").path(projectInfo.key);
         Response response = factory.get(builder, false);
         if (response.getStatus() == 200) {
-            // User is already there
+            System.out.println("Project " + projectInfo.key + " exists");
             return true;
         } else if (response.getStatus() == 404) {
-            // Create the user
+            System.out.println("Project " + projectInfo.key + " does not exist");
             return false;
         } else {
             throw new RuntimeException("Error looking for user " + projectInfo.key + ". " + response.getStatus() + " " + response.readEntity(String.class));
@@ -81,12 +90,16 @@ public class ProjectPopulator {
     }
 
     private void deleteProject(ProjectInfo projectInfo) {
+        System.out.println("Deleting project " + projectInfo.key + "...");
         UriBuilder builder = factory.getJiraRestUriBuilder();
         builder.path("project").path(projectInfo.key);
         factory.delete(builder);
+        System.out.println("Deleting project " + projectInfo.key + " - done");
     }
 
     private void createProject(ProjectInfo projectInfo) {
+        System.out.println("Creating project " + projectInfo.key + "...");
+
         ModelNode project = new ModelNode();
         project.get("key").set(projectInfo.key);
         project.get("name").set(projectInfo.name);
@@ -104,10 +117,12 @@ public class ProjectPopulator {
         Response response = factory.get(builder, true);
         ModelNode projectNode = ModelNode.fromJSONString(response.readEntity(String.class));
         projectInfo.id = projectNode.get("id").asInt();
-        System.out.println("Project id " + projectInfo.id);
+
+        System.out.println("Created project " + projectInfo.key + "(" + projectInfo.id + ") - done");
     }
 
-    private void createComponents(ProjectInfo projectInfo, String componentName) {
+    private void createComponent(ProjectInfo projectInfo, String componentName) {
+        System.out.println("Creating component " + componentName + "...");
         ModelNode component = new ModelNode();
         component.get("name").set(componentName);
         component.get("description").set(componentName);
@@ -119,9 +134,11 @@ public class ProjectPopulator {
         UriBuilder builder = factory.getJiraRestUriBuilder();
         builder.path("component");
         factory.post(builder, component);
+        System.out.println("Creating component " + componentName + " - done");
     }
 
     private void createFixVersion(ProjectInfo projectInfo, String fixVersion) {
+        System.out.println("Creating fix version " + fixVersion + "...");
         ModelNode version = new ModelNode();
         version.get("project").set(projectInfo.key);
         version.get("name").set(fixVersion);
@@ -130,40 +147,7 @@ public class ProjectPopulator {
         UriBuilder builder = factory.getJiraRestUriBuilder();
         builder.path("version");
         factory.post(builder, version);
-    }
-
-
-    private void createIssues(ProjectInfo projectInfo) {
-        //For most of these we can get away with the string variety, but project seemingly needs to be id
-
-        // Run http://localhost:2990/jira/rest/api/2/issue/createmeta?projectKeys=FEAT&expand=projects.issuetypes.fields to find all the fields needed
-
-        // TODO
-        // Issue Type
-        // Assignee
-        // Component
-        // Labels
-        // Custom Fields (Tester + Writer)
-        // Parallel Tasks
-        createIssue(projectInfo, new IssueInfo("Testing 123", "Task", "kabir", "admin", "Medium"));
-
-    }
-
-    private String createIssue(ProjectInfo projectInfo, IssueInfo issueInfo) {
-        //For most of these we can get away with the string variety, but project seemingly needs to be id
-        ModelNode issue = new ModelNode();
-        issue.get("fields", "project", "id").set(projectInfo.id);
-        issue.get("fields", "summary").set(issueInfo.summary);
-        issue.get("fields", "issuetype", "name").set(issueInfo.issueType);
-        issue.get("fields", "assignee", "name").set(issueInfo.assignee);
-        issue.get("fields", "reporter", "name").set(issueInfo.reporter);
-        issue.get("fields", "priority", "name").set(issueInfo.priority);
-
-        UriBuilder builder = factory.getJiraRestUriBuilder();
-        builder.path("issue");
-        Response response = factory.post(builder, issue);
-        ModelNode issueNode = ModelNode.fromJSONString(response.readEntity(String.class));
-        return issueNode.get("key").asString();
+        System.out.println("Creating fix version " + fixVersion + " - done");
     }
 
     static class ProjectInfo {
@@ -172,29 +156,47 @@ public class ProjectPopulator {
         private final String[] versions;
         private int id;
         // Since we're working on a fresh Jira instance we can just hardcode the issue types, priorities etc.
-        private final String[] issueTypes = {"Task", "Story", "Bug", "Epic"};
+        private final String[] issueTypes = {"Task", "Story", "Bug"/*, "Epic"*/}; // Epic is a bit weird so leave that out
         private final String[] priority = {"Lowest", "Low", "Medium", "High", "Highest"};
+        private String[] components;
+        private String[] labels;
 
         public ProjectInfo(String key, String name, String[] versions) {
             this.key = key;
             this.name = name;
             this.versions = versions;
         }
-    }
 
-    static class IssueInfo {
-        private final String summary;
-        private final String issueType;
-        private final String assignee;
-        private final String reporter;
-        private final String priority;
+        public String getKey() {
+            return key;
+        }
 
-        public IssueInfo(String summary, String issueType, String assignee, String reporter, String priority) {
-            this.summary = summary;
-            this.issueType = issueType;
-            this.assignee = assignee;
-            this.reporter = reporter;
-            this.priority = priority;
+        public String getName() {
+            return name;
+        }
+
+        public String[] getVersions() {
+            return versions;
+        }
+
+        public int getId() {
+            return id;
+        }
+
+        public String[] getIssueTypes() {
+            return issueTypes;
+        }
+
+        public String[] getPriority() {
+            return priority;
+        }
+
+        public String[] getComponents() {
+            return components;
+        }
+
+        public String[] getLabels() {
+            return labels;
         }
     }
 }

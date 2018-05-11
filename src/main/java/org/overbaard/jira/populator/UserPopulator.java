@@ -15,6 +15,7 @@ import org.jboss.dmr.ModelNode;
 class UserPopulator {
 
     private final RestClientFactory factory;
+    private String[] users;
 
     UserPopulator(RestClientFactory factory) {
         this.factory = factory;
@@ -24,6 +25,10 @@ class UserPopulator {
         UserPopulator populator = new UserPopulator(factory);
         populator.create();
         return populator;
+    }
+
+    public String[] getUsers() {
+        return users;
     }
 
     private void create() {
@@ -53,6 +58,7 @@ class UserPopulator {
             }
             users.add(userInfo.username);
         }
+        this.users = users.toArray(new String[users.size()]);
     }
 
     private List<Integer> loadAvatars() {
@@ -108,6 +114,7 @@ class UserPopulator {
         builder.path("user").path("avatar").queryParam("username", username);
         factory.put(builder, avatar);
     }
+
     static class UserInfo {
         final String username;
         final String fullName;
