@@ -13,14 +13,16 @@ import org.jboss.dmr.ModelNode;
  */
 public class ProjectPopulator {
     private final RestClientFactory factory;
+    private final boolean deleteExistingProjects;
 
-    private ProjectPopulator(RestClientFactory factory) {
+    private ProjectPopulator(RestClientFactory factory, boolean deleteExistingProjects) {
         this.factory = factory;
+        this.deleteExistingProjects = deleteExistingProjects;
     }
 
 
-    public static ProjectPopulator createProjects(RestClientFactory factory) {
-        ProjectPopulator populator = new ProjectPopulator(factory);
+    public static ProjectPopulator createProjects(RestClientFactory factory, boolean deleteExistingProjects) {
+        ProjectPopulator populator = new ProjectPopulator(factory, deleteExistingProjects);
         populator.create();
         return populator;
     }
@@ -32,6 +34,12 @@ public class ProjectPopulator {
         projects.add(new ProjectInfo("UP", "Upstream", new String[]{"1.0.0", "2.0.0", "3.0.0"}));
 
         for (ProjectInfo projectInfo : projects) {
+            if (projectExists(projectInfo)) {
+                if (!deleteExistingProjects) {
+                    continue;
+                }
+                deleteProject(projectInfo);
+            }
             if (!projectExists(projectInfo)) {
                 createProject(projectInfo);
                 if (projectInfo.key.equals("FEAT") || projectInfo.key.equals("SUP")) {
@@ -52,6 +60,7 @@ public class ProjectPopulator {
                         createFixVersion(projectInfo, fixVersion);
                     }
                 }
+                createIssues(projectInfo);
             }
         }
     }
@@ -71,6 +80,12 @@ public class ProjectPopulator {
         }
     }
 
+    private void deleteProject(ProjectInfo projectInfo) {
+        UriBuilder builder = factory.getJiraRestUriBuilder();
+        builder.path("project").path(projectInfo.key);
+        factory.delete(builder);
+    }
+
     private void createProject(ProjectInfo projectInfo) {
         ModelNode project = new ModelNode();
         project.get("key").set(projectInfo.key);
@@ -83,6 +98,13 @@ public class ProjectPopulator {
         UriBuilder builder = factory.getJiraRestUriBuilder();
         builder.path("project");
         factory.post(builder, project);
+
+        builder = factory.getJiraRestUriBuilder();
+        builder.path("project").path(projectInfo.key);
+        Response response = factory.get(builder, true);
+        ModelNode projectNode = ModelNode.fromJSONString(response.readEntity(String.class));
+        projectInfo.id = projectNode.get("id").asInt();
+        System.out.println("Project id " + projectInfo.id);
     }
 
     private void createComponents(ProjectInfo projectInfo, String componentName) {
@@ -112,6 +134,7 @@ public class ProjectPopulator {
 
 
     private void createIssues(ProjectInfo projectInfo) {
+        //For most of these we can get away with the string variety, but project seemingly needs to be id
 
         // Run http://localhost:2990/jira/rest/api/2/issue/createmeta?projectKeys=FEAT&expand=projects.issuetypes.fields to find all the fields needed
 
@@ -122,18 +145,56 @@ public class ProjectPopulator {
         // Labels
         // Custom Fields (Tester + Writer)
         // Parallel Tasks
+        createIssue(projectInfo, new IssueInfo("Testing 123", "Task", "kabir", "admin", "Medium"));
 
+    }
+
+    private String createIssue(ProjectInfo projectInfo, IssueInfo issueInfo) {
+        //For most of these we can get away with the string variety, but project seemingly needs to be id
+        ModelNode issue = new ModelNode();
+        issue.get("fields", "project", "id").set(projectInfo.id);
+        issue.get("fields", "summary").set(issueInfo.summary);
+        issue.get("fields", "issuetype", "name").set(issueInfo.issueType);
+        issue.get("fields", "assignee", "name").set(issueInfo.assignee);
+        issue.get("fields", "reporter", "name").set(issueInfo.reporter);
+        issue.get("fields", "priority", "name").set(issueInfo.priority);
+
+        UriBuilder builder = factory.getJiraRestUriBuilder();
+        builder.path("issue");
+        Response response = factory.post(builder, issue);
+        ModelNode issueNode = ModelNode.fromJSONString(response.readEntity(String.class));
+        return issueNode.get("key").asString();
     }
 
     static class ProjectInfo {
         private final String key;
         private final String name;
         private final String[] versions;
+        private int id;
+        // Since we're working on a fresh Jira instance we can just hardcode the issue types, priorities etc.
+        private final String[] issueTypes = {"Task", "Story", "Bug", "Epic"};
+        private final String[] priority = {"Lowest", "Low", "Medium", "High", "Highest"};
 
         public ProjectInfo(String key, String name, String[] versions) {
             this.key = key;
             this.name = name;
             this.versions = versions;
+        }
+    }
+
+    static class IssueInfo {
+        private final String summary;
+        private final String issueType;
+        private final String assignee;
+        private final String reporter;
+        private final String priority;
+
+        public IssueInfo(String summary, String issueType, String assignee, String reporter, String priority) {
+            this.summary = summary;
+            this.issueType = issueType;
+            this.assignee = assignee;
+            this.reporter = reporter;
+            this.priority = priority;
         }
     }
 }

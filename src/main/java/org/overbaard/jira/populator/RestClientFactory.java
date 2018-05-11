@@ -148,6 +148,22 @@ class RestClientFactory implements AutoCloseable {
         }
     }
 
+    public Response delete(UriBuilder builder) {
+        try {
+            final WebTarget target = getClient().target(builder);
+            final Response response =
+                    target.request(MediaType.APPLICATION_JSON_TYPE).delete();
+
+            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+                throw new RuntimeException(response.readEntity(String.class));
+            }
+            return response;
+        } finally {
+            // Close the client
+            close();
+        }
+    }
+
     private class Authenticator implements ClientRequestFilter {
 
         public Authenticator() {
