@@ -41,6 +41,10 @@ public class IssuePopulator {
         return populator;
     }
 
+    public String[] getIssueKeys() {
+        return issueKeys;
+    }
+
     private void createIssues(ProjectInfo projectInfo) {
         //For most of these we can get away with the string variety, but project seemingly needs to be id
 
@@ -57,6 +61,10 @@ public class IssuePopulator {
             issueKeys.add(createIssue(projectInfo, issueInfo));
         }
         this.issueKeys = issueKeys.toArray(new String[issueKeys.size()]);
+
+        for (int i = 0 ; i < numberIssues ; i++) {
+            transitionIssue(i, this.issueKeys[i]);
+        }
     }
 
     private IssueInfo createIssueInfo(ProjectInfo projectInfo, int issueIndex) {
@@ -128,6 +136,30 @@ public class IssuePopulator {
         String issueKey = issueNode.get("key").asString();
         System.out.println("Created issue " + issueKey);
         return issueKey;
+    }
+
+    private void transitionIssue(int issueIndex, String issueKey) {
+
+        UriBuilder builder = factory.getJiraRestUriBuilder();
+        builder.path("issue").path(issueKey).path("transitions");
+        Response response = factory.get(builder, true);
+        List<ModelNode> transitions = ModelNode.fromJSONString(response.readEntity(String.class)).get("transitions").asList();
+
+        int transitionIndex = issueIndex % 4; // By default there are 4 states in the workflow
+        if (transitionIndex == 0) {
+            return;
+        }
+        ModelNode transition = transitions.get(transitionIndex);
+        int transitionId = transition.get("id").asInt();
+        String transitionName = transition.get("name").asString();
+
+        System.out.println("Moving issue " + issueKey + " to " + transitionName + "...");
+        builder = factory.getJiraRestUriBuilder();
+        builder.path("issue").path(issueKey).path("transitions");
+        ModelNode payload = new ModelNode();
+        payload.get("transition", "id").set(transitionId);
+        factory.post(builder, payload);
+        System.out.println("Moved issue " + issueKey + " to " + transitionName);
     }
 
 

@@ -35,10 +35,11 @@ public class ProjectPopulator {
     private void create() {
         System.out.println("Creating projects....");
         List<ProjectInfo> projects = new ArrayList<>();
+        projects.add(new ProjectInfo("UP", "Upstream", new String[]{"1.0.0", "2.0.0", "3.0.0"}));
         projects.add(new ProjectInfo("FEAT", "Feature", new String[]{"1.0.0", "2.0.0", "2.0.2"}));
         projects.add(new ProjectInfo("SUP", "Support", new String[]{"1.0.0", "1.0.1", "1.0.2"}));
-        projects.add(new ProjectInfo("UP", "Upstream", new String[]{"1.0.0", "2.0.0", "3.0.0"}));
 
+        String[] upIssueKeys = null;
         for (ProjectInfo projectInfo : projects) {
             System.out.println("====== " + projectInfo.key);
             if (projectExists(projectInfo)) {
@@ -68,9 +69,16 @@ public class ProjectPopulator {
                 }
                 projectInfo.labels = projectInfo.key.equals("FEAT") ? FEAT_LABELS : SUP_LABELS;
             }
-            IssuePopulator.createIssues(factory, 30, projectInfo, assignees);
+            IssuePopulator issuePopulator = IssuePopulator.createIssues(factory, 30, projectInfo, assignees);
+            String[] issueKeys = issuePopulator.getIssueKeys();
+            if (projectInfo.key.equals("UP")) {
+                // This is the first one in the list
+                upIssueKeys = issueKeys;
+            } else {
+                linkIssues(projectInfo, issueKeys, upIssueKeys);
+            }
         }
-        System.out.println("Creating projects - done");
+        System.out.println("Created projects");
     }
 
     private boolean projectExists(ProjectInfo projectInfo) {
@@ -94,7 +102,7 @@ public class ProjectPopulator {
         UriBuilder builder = factory.getJiraRestUriBuilder();
         builder.path("project").path(projectInfo.key);
         factory.delete(builder);
-        System.out.println("Deleting project " + projectInfo.key + " - done");
+        System.out.println("Deleted project " + projectInfo.key);
     }
 
     private void createProject(ProjectInfo projectInfo) {
@@ -118,7 +126,7 @@ public class ProjectPopulator {
         ModelNode projectNode = ModelNode.fromJSONString(response.readEntity(String.class));
         projectInfo.id = projectNode.get("id").asInt();
 
-        System.out.println("Created project " + projectInfo.key + "(" + projectInfo.id + ") - done");
+        System.out.println("Created project " + projectInfo.key + "(" + projectInfo.id + ")");
     }
 
     private void createComponent(ProjectInfo projectInfo, String componentName) {
@@ -134,7 +142,7 @@ public class ProjectPopulator {
         UriBuilder builder = factory.getJiraRestUriBuilder();
         builder.path("component");
         factory.post(builder, component);
-        System.out.println("Creating component " + componentName + " - done");
+        System.out.println("Created component " + componentName);
     }
 
     private void createFixVersion(ProjectInfo projectInfo, String fixVersion) {
@@ -147,8 +155,25 @@ public class ProjectPopulator {
         UriBuilder builder = factory.getJiraRestUriBuilder();
         builder.path("version");
         factory.post(builder, version);
-        System.out.println("Creating fix version " + fixVersion + " - done");
+        System.out.println("Created fix version " + fixVersion);
     }
+
+    private void linkIssues(ProjectInfo projectInfo, String[] issueKeys, String[] upIssueKeys) {
+        int start = projectInfo.key.equals("FEAT") ? 0 : 1;
+        for (int i = start ; i < issueKeys.length ; i++) {
+            ModelNode link = new ModelNode();
+            link.get("type", "name").set("Blocks");
+            link.get("inwardIssue", "key").set(upIssueKeys[i]);
+            link.get("outwardIssue", "key").set(issueKeys[i]);
+
+            System.out.println("Linking " + issueKeys[i] + " to " + upIssueKeys[i] + "...");
+            UriBuilder builder = factory.getJiraRestUriBuilder();
+            builder.path("issueLink");
+            factory.post(builder, link);
+            System.out.println("Linked " + issueKeys[i] + " to " + upIssueKeys[i]);
+        }
+    }
+
 
     static class ProjectInfo {
         private final String key;
